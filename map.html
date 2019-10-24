@@ -136,7 +136,6 @@ const vesselStyle = new ol.style.Style({
 });
 
 function getVesselStyle(feature, resolution) {
-    console.log(feature, resolution);
     const vessel = feature.get('data');
     let heading = null;
     if ('heading' in vessel && vessel.heading != 511) {
