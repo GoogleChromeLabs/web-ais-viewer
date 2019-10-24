@@ -1,0 +1,9 @@
+[submodule "third_party/openlayers"]
+	path = third_party/openlayers
+	url = https://github.com/openlayers/openlayers.git
+[submodule "third_party/quickselect"]
+	path = third_party/quickselect
+	url = https://github.com/mourner/quickselect.git
+[submodule "third_party/rbush"]
+	path = third_party/rbush
+	url = https://github.com/mourner/rbush.git

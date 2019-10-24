@@ -2,220 +2,52 @@
 <html>
 
 <head>
-    <meta charset="utf-8">
-    <link rel="stylesheet"
-        href="https://cdn.jsdelivr.net/gh/openlayers/openlayers.github.io@master/en/v6.0.1/css/ol.css" type="text/css">
-    <style>
-        .map {
-            width: 100%;
-            height: 100%;
-        }
+<meta charset="utf-8">
+<link rel="stylesheet" href="third_party/openlayers/src/ol/ol.css" type="text/css">
+<style>
+    .map {
+        width: 100%;
+        height: 100%;
+    }
 
-        html,
-        body {
-            height: 100%;
-            margin: 0;
-            padding: 0;
-        }
+    html,
+    body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+    }
 
-        .ol-overlay-container {
-            border: 1px solid black;
-            border-radius: 15px;
-            background: white;
-            padding: 3px 10px;
-            width: 250px;
-        }
+    .ol-overlay-container {
+        border: 1px solid black;
+        border-radius: 15px;
+        background: white;
+        padding: 3px 10px;
+        width: 250px;
+    }
 
-        #serialcontrol {
-            top: .5em;
-            right: .5em;
-        }
-    </style>
-    <link rel="stylesheet" href="styles.css">
-    <script src="https://cdn.jsdelivr.net/gh/openlayers/openlayers.github.io@master/en/v6.0.1/build/ol.js"></script>
-    <script src="utils.js"></script>
+    #serialcontrol {
+        top: .5em;
+        right: .5em;
+    }
+</style>
+<link rel="stylesheet" href="styles.css">
+<script type=importmap>
+{
+  "imports": {
+    "ol/": "/third_party/openlayers/src/ol/",
+    "@openlayers/pepjs": "/empty.mjs",
+    "rbush": "/third_party/rbush/index.js",
+    "quickselect": "/third_party/quickselect/index.js"
+  }
+}
+</script>
+<script type=module src="map.mjs"></script>
 </head>
 
 <body>
 <div id="map" class="map"></div>
-<div id="popup" class="vessel">Popup</div>
 <div id="serialcontrol" class="ol-control ol-unselectable ol-uncollapsible">
 Connected to [...]
 </div>
-<script type="text/javascript">
-let vesselDataPopup = new ol.Overlay({
-    element: document.getElementById('popup'),
-    autoPan: true
-});
-
-let vesselFeatureSource = new ol.source.Vector();
-
-function getVesselData(mmsi) {
-    const data = localStorage[mmsi];
-    if (!data) return null;
-    const vessel = JSON.parse(data);
-    if (!(vessel.lon && vessel.lat && vessel.mmsi && vessel.lastUpdate))
-        return null;
-    vessel.lastUpdate = new Date(vessel.lastUpdate);
-    return vessel;
-}
-
-// Don't show vessels that haven't updated in 15 minutes.
-function shouldShowVessel(vessel) {
-    const now = new Date();
-    return (now - vessel.lastUpdate) < 1000*60*15;
-}
-
-function updateFeatureForVessel(vessel) {
-    let feature = vesselFeatureSource.getFeatureById(vessel.mmsi);
-    if (!feature) {
-        feature = new ol.Feature({
-            name: vessel.mmsi
-        });
-        feature.setId(vessel.mmsi);
-        vesselFeatureSource.addFeature(feature);
-    }
-    feature.setGeometry(new ol.geom.Point(ol.proj.fromLonLat([vessel.lon, vessel.lat])));
-    feature.set('data', vessel);
-
-    if (vesselDataPopup.get('feature') == feature)
-        updatePopup(feature);
-
-    return feature;
-}
-
-function updatePopup(feature) {
-    const geometry = feature.getGeometry();
-    vesselDataPopup.set('feature', feature);
-    const data = feature.get('data');
-    vesselDataPopup.getElement().innerHTML = formatVesselData(data);
-    vesselDataPopup.setPosition(ol.extent.getCenter(geometry.getExtent()));
-}
-
-function hidePopup() {
-    vesselDataPopup.setPosition(undefined);
-    vesselDataPopup.set('feature', undefined);
-}
-
-for (let i = 0; i < localStorage.length; ++i) {
-    const vessel = getVesselData(localStorage.key(i));
-    if (!vessel) continue;
-    if (!shouldShowVessel(vessel))
-        continue;
-    updateFeatureForVessel(vessel);
-}
-self.addEventListener('storage', e => {
-    if (e.storageArea != localStorage) return;
-    const vessel = getVesselData(e.key);
-    if (!vessel) return;
-    updateFeatureForVessel(vessel);
-});
-
-
-// Every 30 seconds, remove features that haven't been updated in 5 minutes.
-self.setInterval(() => {
-    const now = new Date();
-    for (const feature of vesselFeatureSource.getFeatures()) {
-        const vessel = feature.get('data');
-        if (!shouldShowVessel(vessel)) {
-            if (vesselDataPopup.get('feature') == feature)
-                hidePopup();
-            vesselFeatureSource.removeFeature(feature);
-        }
-    }
-}, 1000*30);
-
-const vesselStyle = new ol.style.Style({
-    image: new ol.style.Circle({
-      radius: 6,
-      fill: new ol.style.Fill({color: 'rgba(255,255,255,0.4)'}),
-      stroke: new ol.style.Stroke({
-        color: '#3399CC', width: 1.25
-      })
-    })
-});
-
-function getVesselStyle(feature, resolution) {
-    const vessel = feature.get('data');
-    let heading = null;
-    if ('heading' in vessel && vessel.heading != 511) {
-        heading = vessel.heading;
-    } else if ('course' in vessel) {
-        heading = vessel.course;
-    }
-    if (heading == null)
-        return vesselStyle;
-    heading = heading / 180 * Math.PI;
-    let color = '#000000';
-    if (vessel.shiptype >= 50 && vessel.shiptype < 60)
-        color = '#ff9200';
-    else if (vessel.shiptype >= 60 && vessel.shiptype < 70)
-        color = '#0000ff';
-    let scale = 0.3;
-    if ('to_bow' in vessel && 'to_stern' in vessel) {
-        let length = vessel.to_bow + vessel.to_stern;
-        if (length > 40)
-            scale = 0.35;
-        if (length > 100)
-            scale = 0.4;
-        if (length > 200)
-            scale = 0.45;
-    }
-    let opacity = 1;
-    const now = new Date();
-    if (now - vessel.lastUpdate > 1000*60*5)
-        opacity = 0.5;
-    else if (now - vessel.lastUpdate > 1000*60*10)
-        opacity = 0.2;
-    return new ol.style.Style({
-        image: new ol.style.Icon({
-            src: "vessel.png",
-            scale: scale,
-            rotation: heading,
-            color: color,
-            opacity: opacity
-        })
-    });
-}
-
-let vesselFeatureLayer = new ol.layer.Vector({
-    source: vesselFeatureSource,
-    style: getVesselStyle,
-});
-
-let map = new ol.Map({
-    target: 'map',
-    layers: [
-        new ol.layer.Tile({
-            source: new ol.source.OSM()
-        }),
-        vesselFeatureLayer,
-    ],
-    view: new ol.View({
-        center: ol.proj.fromLonLat([-122.348, 37.798]),
-        zoom: 13
-    }),
-    overlays: [
-        vesselDataPopup
-    ]
-});
-
-map.addControl(new ol.control.Control({element: document.getElementById('serialcontrol')}));
-
-map.on('click', e => {
-    let gotFeature = false;
-    const closestFeature = vesselFeatureSource.getClosestFeatureToCoordinate(e.coordinate);
-    map.forEachFeatureAtPixel(e.pixel, feature => {
-        if (feature != closestFeature)
-            return;
-        gotFeature = true;
-        updatePopup(feature);
-    }, {layerFilter: layer => layer == vesselFeatureLayer, hitTolerance: 16});
-    if (!gotFeature) 
-        hidePopup();
-});
-
-</script>
 </body>
-
 </html>
