@@ -52,10 +52,10 @@ function getVesselData(mmsi) {
     return vessel;
 }
 
-// Don't show vessels that haven't updated in 5 minutes.
+// Don't show vessels that haven't updated in 15 minutes.
 function shouldShowVessel(vessel) {
     const now = new Date();
-    return (now - vessel.lastUpdate) < 1000*60*5;
+    return (now - vessel.lastUpdate) < 1000*60*15;
 }
 
 function updateFeatureForVessel(vessel) {
@@ -126,14 +126,7 @@ const vesselStyle = new ol.style.Style({
       })
     })
 });
-    
-const vesselStyle2 = new ol.style.Style({
-    image: new ol.style.Icon({
-      src: "vessel.png",
-      scale: 0.4
-    })
-});
-    
+
 function getVesselStyle(feature, resolution) {
     console.log(feature, resolution);
     const vessel = feature.get('data');
@@ -161,12 +154,16 @@ function getVesselStyle(feature, resolution) {
         if (length > 200)
             scale = 0.45;
     }
+    let opacity = 1;
+    if (vessel.lastUpdate - new Date() > 1000*60*5)
+        opacity = 0.2;
     return new ol.style.Style({
         image: new ol.style.Icon({
             src: "vessel.png",
             scale: scale,
             rotation: heading,
-            color: color
+            color: color,
+            opacity: opacity
         })
     });
 }
