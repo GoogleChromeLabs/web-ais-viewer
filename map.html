@@ -147,11 +147,11 @@ function getVesselStyle(feature, resolution) {
     if (heading == null)
         return vesselStyle;
     heading = heading / 180 * Math.PI;
-    let color = 'black';
+    let color = '#000000';
     if (vessel.shiptype >= 50 && vessel.shiptype < 60)
-        color = 'orange';
+        color = '#ff9200';
     else if (vessel.shiptype >= 60 && vessel.shiptype < 70)
-        color = 'blue';
+        color = '#0000ff';
     let scale = 0.3;
     if ('to_bow' in vessel && 'to_stern' in vessel) {
         let length = vessel.to_bow + vessel.to_stern;
@@ -163,7 +163,10 @@ function getVesselStyle(feature, resolution) {
             scale = 0.45;
     }
     let opacity = 1;
-    if (vessel.lastUpdate - new Date() > 1000*60*5)
+    const now = new Date();
+    if (now - vessel.lastUpdate > 1000*60*5)
+        opacity = 0.5;
+    else if (now - vessel.lastUpdate > 1000*60*10)
         opacity = 0.2;
     return new ol.style.Style({
         image: new ol.style.Icon({
