@@ -1,0 +1,415 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<script src="utils.js"></script>
+<script>
+class SplitterTransformer {
+    constructor(separator) {
+        this.separator = separator;
+        this.data = "";
+    }
+
+    start(controller) {}
+
+    async transform(chunk, controller) {
+        const data = this.data + chunk;
+        const chunks = data.split(this.separator);
+        this.data = chunks.pop();
+        for (let out_chunk of chunks)
+            controller.enqueue(out_chunk);
+    }
+
+    flush(controller) {}
+};
+
+class LineSplitterStream extends TransformStream {
+    constructor(separator = "\r\n") {
+        super(new SplitterTransformer(separator));
+    }
+}
+
+// Expects chunks are individual NMEA sentences.
+class NMEAParser {
+    start(controller) {}
+
+    async transform(chunk, controller) {
+        let result = {
+            raw: chunk,
+            valid: true
+        };
+        if (chunk.length < 6 || chunk.length > 82) {
+            result.valid = false;
+            controller.enqueue(result);
+            return;
+        }
+        result.start = chunk[0];
+        if (result.start != '!' && result.start != '$') {
+            result.valid = false;
+            controller.enqueue(result);
+            return;
+        }
+        result.talker = chunk.substring(1, 3);
+        result.type = chunk.substring(3, 6);
+        const checked_data_start = 1;
+        let checked_data_end = chunk.length;
+        if (chunk[chunk.length-3] == '*') {
+            result.expected_crc = parseInt(chunk.slice(-2), 16);
+            checked_data_end = chunk.length - 3;
+        }
+        result.crc = 0;
+        for (let i = checked_data_start; i < checked_data_end; ++i) {
+            result.crc = result.crc ^ chunk.charCodeAt(i);
+        }
+        result.valid = result.expected_crc && result.expected_crc == result.crc;
+        result.data = chunk.substring(7, checked_data_end);
+        delete result.raw;
+        result.fields = result.data.split(',');
+        controller.enqueue(result);
+    }
+
+    flush(controller) {}
+}
+
+class NMEAParseStream extends TransformStream {
+    constructor(separator) {
+        super(new NMEAParser());
+    }
+}
+
+// Filters out just the AIS messages from an NMEA stream.
+class AISFilter {
+    start(controller) {}
+
+    async transform(chunk, controller) {
+        // Ignore invalid chunks.
+        if (!chunk.valid) return;
+        if (chunk.type != 'VDM' && chunk.type != 'VDO') return;
+        
+        let [fragment_count, fragment_number, message_id, radio_channel, payload, padding] = chunk.fields;
+
+        controller.enqueue({fragment_count, fragment_number, message_id, radio_channel, payload, padding});
+    }
+
+    flush(controller) {}
+}
+
+class AISFilterStream extends TransformStream {
+    constructor(separator) {
+        super(new AISFilter());
+    }
+}
+
+// Decodes payload into bit stream.
+function DecodePayload(payload, padding) {
+    let result = '';
+    for (let i = 0; i < payload.length; ++i) {
+        let val = payload.charCodeAt(i) - 48;
+        if (val > 40) val -= 8;
+        result += (val).toString(2).padStart(6, '0');
+    }
+    if (padding != 0)
+        result = result.slice(0, -padding);
+    return result;
+}
+
+// Combines multi-sentence AIS messages into one.
+class AISCombiner {
+    start(controller) {
+        this.current_fragment_count = 0;
+        this.last_fragment_number = 0;
+        this.current_message_id = null;
+    }
+
+    async transform(chunk, controller) {
+        if (chunk.fragment_count == 1) {
+            delete chunk.fragment_number;
+            delete chunk.message_id;
+            chunk.payload = DecodePayload(chunk.payload, chunk.padding);
+            controller.enqueue(chunk);
+            return;
+        }
+
+        if (chunk.fragment_number == 1) {
+            this.current_fragment_count = chunk.fragment_count;
+            this.current_message_id = chunk.message_id;
+            this.last_fragment_number = chunk.fragment_number;
+            this.accumulated_payload = chunk.payload;
+            return;
+        }
+
+        if (chunk.message_id != this.current_message_id || chunk.fragment_count != this.current_fragment_count) {
+            // Ignore this chunk, as it continues something we missed the
+            // start of.
+            // TODO: support interleaved multi-sentence messages
+            return;
+        }
+
+        this.accumulated_payload += chunk.payload;
+        
+        if (chunk.fragment_number == chunk.fragment_count) {
+            delete chunk.fragment_number;
+            delete chunk.message_id;
+            chunk.payload = DecodePayload(this.accumulated_payload, chunk.padding);
+            controller.enqueue(chunk);
+
+            this.current_fragment_count = 0;
+            this.last_fragment_number = 0;
+            this.current_message_id = null;
+            this.accumulated_payload = null;
+        }
+    }
+
+    flush(controller) {}
+}
+
+class AISCombineStream extends TransformStream {
+    constructor(separator) {
+        super(new AISCombiner());
+    }
+}
+
+function reverse(str){
+  return str.split("").reverse().join("");
+}
+
+function extractUInt(bitstring) {
+    return parseInt(bitstring, 2);
+}
+
+function extractInt(bitstring) {
+    const is_neg = bitstring[0] == '1';
+    if (is_neg) {
+        let s = '';
+        for (let i = 0; i < bitstring.length; ++i)
+            s += bitstring[i] == '0' ? '1' : '0';
+        bitstring = s;
+    }
+    let val = extractUInt(bitstring);
+    if (is_neg) {
+        val = -(val - 1);
+    }
+    return val;
+}
+
+function extractString(bitstring) {
+    let result = '';
+    for (let i = 0; i < bitstring.length-5; i += 6) {
+        let nibble = parseInt(bitstring.substring(i, i+6), 2);
+        if (nibble < 32) {
+            nibble += 64;
+        }
+        result += String.fromCharCode(nibble);
+    }
+    let end = result.length;
+    while (end > 0 && result[end-1] == '@') --end;
+    return result.substring(0, end);
+}
+
+function ParseCNB(payload, chunk) {
+    let result = {type: "CNB"};
+
+    result.repeat = extractUInt(payload.substring(6, 8));
+    result.mmsi = extractUInt(payload.substring(8, 38));
+    result.status = extractUInt(payload.substring(38, 42));
+    result.turn = extractInt(payload.substring(42, 50));
+    result.speed = extractUInt(payload.substring(50, 60)) / 10;
+    result.accuracy = extractUInt(payload.substring(60, 61));
+    result.lon = extractInt(payload.substring(61, 89)) / 600000;
+    result.lat = extractInt(payload.substring(89, 116)) / 600000;
+    result.course = extractUInt(payload.substring(116, 128)) / 10;
+    result.heading = extractUInt(payload.substring(128, 137));
+    result.second = extractUInt(payload.substring(137, 143));
+    result.maneuver = extractUInt(payload.substring(143, 145));
+
+    return result;
+}
+
+function ParseBaseStation(payload, chunk) {
+    let result = {type: "Base Station"};
+
+    result.repeat = extractUInt(payload.substring(6, 8));
+    result.mmsi = extractUInt(payload.substring(8, 38));
+    const year = extractInt(payload.substring(38, 52));
+    const month = extractInt(payload.substring(52, 56));
+    const day = extractInt(payload.substring(56, 61));
+    const hour = extractInt(payload.substring(61, 66));
+    const minute = extractInt(payload.substring(66, 72));
+    const second = extractInt(payload.substring(72, 78));
+    result.month = month;
+    result.date = new Date(year, month - 1, day, hour, minute, second);
+    result.accuracy = extractUInt(payload.substring(78, 79));
+    result.lon = extractInt(payload.substring(79, 107)) / 600000;
+    result.lat = extractInt(payload.substring(107, 134)) / 600000;
+
+    return result;
+}
+
+function ParseVoyageData(payload, chunk) {
+    let result = {type: "Voyage Data"};
+
+    result.repeat = extractUInt(payload.substring(6, 8));
+    result.mmsi = extractUInt(payload.substring(8, 38));
+    result.ais_version = extractUInt(payload.substring(38, 40));
+    result.imo = extractUInt(payload.substring(40, 70));
+    result.callsign = extractString(payload.substring(70, 112)).trim();
+    result.shipname = extractString(payload.substring(112, 232)).trim();
+    result.shiptype = extractUInt(payload.substring(232, 240));
+    result.to_bow = extractUInt(payload.substring(240, 249));
+    result.to_stern = extractUInt(payload.substring(249, 258));
+    result.to_port = extractUInt(payload.substring(258, 264));
+    result.to_starboard = extractUInt(payload.substring(264, 270));
+    result.epfd = extractUInt(payload.substring(270, 274));
+    result.month = extractUInt(payload.substring(274, 278));
+    result.day = extractUInt(payload.substring(278, 283));
+    result.hour = extractUInt(payload.substring(283, 288));
+    result.minute = extractUInt(payload.substring(288, 294));
+    result.draught = extractUInt(payload.substring(294, 302)) / 10;
+    result.destination = extractString(payload.substring(302, 422)).trim();
+
+    return result;
+}
+
+function ParseStandardClassB(payload, chunk) {
+    let result = {type: "ClassB"};
+
+    result.repeat = extractUInt(payload.substring(6, 8));
+    result.mmsi = extractUInt(payload.substring(8, 38));
+    result.speed = extractUInt(payload.substring(46, 56)) / 10;
+    result.accuracy = extractUInt(payload.substring(56, 57));
+    result.lon = extractInt(payload.substring(57, 85)) / 600000;
+    result.lat = extractInt(payload.substring(85, 112)) / 600000;
+    result.course = extractUInt(payload.substring(112, 124)) / 10;
+    result.heading = extractUInt(payload.substring(124, 133));
+    result.second = extractUInt(payload.substring(133, 139));
+
+    return result;
+}
+
+function ParseExtendedClassB(payload, chunk) {
+    let result = ParseStandardClassB(payload, chunk);
+    result.shipname = extractString(payload.substring(143, 263));
+    result.shiptype = extractUInt(payload.substring(263, 271));
+    result.to_bow = extractUInt(payload.substring(271, 280));
+    result.to_stern = extractUInt(payload.substring(280, 289));
+    result.to_port = extractUInt(payload.substring(289, 295));
+    result.to_starboard = extractUInt(payload.substring(295, 301));
+    result.epfd = extractUInt(payload.substring(301, 305));
+    
+    return result;
+}
+
+const AISMessageParsers = {
+    1: ParseCNB,
+    2: ParseCNB,
+    3: ParseCNB,
+    4: ParseBaseStation,
+    5: ParseVoyageData,
+    18: ParseStandardClassB,
+    19: ParseExtendedClassB
+}
+
+class AISParser {
+    start(controller) {
+
+    }
+
+    async transform(chunk, controller) {
+        let payload = chunk.payload;
+        
+        let message_type = parseInt(payload.substring(0, 6), 2);
+
+        let parser = AISMessageParsers[message_type];
+        if (parser) chunk = parser(payload, chunk);
+
+        controller.enqueue({message_type, ...chunk});
+    }
+
+    flush(controller) {}
+}
+
+class AISParseStream extends TransformStream {
+    constructor(separator) {
+        super(new AISParser());
+    }
+}
+
+function getContainer(mmsi) {
+    const id = 'mmsi_' + mmsi;
+    let div = document.getElementById(id);
+    if (!div) {
+        div = document.createElement('div');
+        div.id = id;
+        div.className = 'vessel';
+        div.innerHTML = 'MMSI: ' + mmsi;
+        div.vesselData = {};
+        try {
+            let data = JSON.parse(localStorage[mmsi]);
+            div.vesselData = data;
+        } catch (error) {
+            // Ignore
+        }
+        document.getElementById('data').appendChild(div);
+    }
+    return div;
+}
+
+async function doWork() {
+    const port = await navigator.serial.requestPort();
+    await port.open({ baudrate: 38400 });
+    let [forYou, forLog] = port.readable.tee();
+    forLog.pipeTo(new WritableStream({
+        write: function (chunk) {
+            console.log(chunk);
+        }
+    }));
+    self.pipe = forYou.
+        pipeThrough(new TextDecoderStream('ascii')).
+        pipeThrough(new LineSplitterStream()).
+        pipeThrough(new NMEAParseStream()).
+        pipeThrough(new AISFilterStream()).
+        pipeThrough(new AISCombineStream()).
+        pipeThrough(new AISParseStream());
+    self.piperesult = self.pipe.pipeTo(new WritableStream({
+            write: function (value) {
+                console.log(value);
+                if('mmsi' in value) {
+                    const div = getContainer(value.mmsi);
+                    div.vesselData = { ...div.vesselData, ...value, lastUpdate: new Date()};
+                    if ('lat' in value && 'lon' in value) {
+                        if (!('track' in div.vesselData))
+                            div.vesselData.track = [];
+                        div.vesselData.track.push({lat: value.lat, lon: value.lon, ts: div.vesselData.lastUpdate});
+                    }
+                    localStorage[value.mmsi] = JSON.stringify(div.vesselData);
+                    div.innerHTML = formatVesselData(div.vesselData);
+                }   
+            }
+        }));
+    self.piperesult.then(() => "Done reading", () => "Failed reading");
+}
+        </script>
+<style>
+#data {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.vessel {
+    border: 1px solid black;
+    margin: 5px;
+    padding: 5px;
+    width: 250px;
+    height: 280px;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+</style>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<button onclick="doWork()">Select port</button>
+<div id="data">
+</div>
+</body>
+</html>

@@ -1,0 +1,21 @@
+
+.vessel h3 {
+    margin: 0;
+}
+
+.vessel dt {
+    float: left;
+    clear: left;
+    width: 100px;
+    text-align: right;
+    font-weight: bold;
+}
+
+.vessel dt::after {
+    content: ":";
+}
+
+.vessel dd {
+    margin: 0 0 0 110px;
+    padding: 0 0 0.5em 0;
+}
