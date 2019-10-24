@@ -25,6 +25,11 @@
             padding: 3px 10px;
             width: 250px;
         }
+
+        #serialcontrol {
+            top: .5em;
+            right: .5em;
+        }
     </style>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/gh/openlayers/openlayers.github.io@master/en/v6.0.1/build/ol.js"></script>
@@ -34,6 +39,9 @@
 <body>
 <div id="map" class="map"></div>
 <div id="popup" class="vessel">Popup</div>
+<div id="serialcontrol" class="ol-control ol-unselectable ol-uncollapsible">
+Connected to [...]
+</div>
 <script type="text/javascript">
 let vesselDataPopup = new ol.Overlay({
     element: document.getElementById('popup'),
@@ -190,6 +198,7 @@ let map = new ol.Map({
     ]
 });
 
+map.addControl(new ol.control.Control({element: document.getElementById('serialcontrol')}));
 
 map.on('click', e => {
     let gotFeature = false;
