@@ -5,6 +5,10 @@ import Icon from 'ol/style/Icon.js';
 import Stroke from 'ol/style/Stroke.js';
 import Style from 'ol/style/Style.js';
 
+function shouldShowVessel(vessel) {
+    const now = new Date();
+    return (now - vessel.lastUpdate) < 1000*60*30;
+}
 
 // Style for non-moving vessels.
 const defaultVesselStyle = new Style({
@@ -19,6 +23,10 @@ const defaultVesselStyle = new Style({
 
 function getVesselStyle(feature, resolution) {
     const vessel = feature.get('data');
+
+    if (!shouldShowVessel(vessel))
+        return null;
+
     let heading = null;
     if ('heading' in vessel && vessel.heading != 511) {
         heading = vessel.heading;
@@ -49,6 +57,8 @@ function getVesselStyle(feature, resolution) {
         opacity = 0.5;
     else if (now - vessel.lastUpdate > 1000*60*10)
         opacity = 0.2;
+    else if (now - vessel.lastUpdate > 1000*60*20)
+        opacity = 0.1;
     return new Style({
         image: new Icon({
             src: "vessel.png",

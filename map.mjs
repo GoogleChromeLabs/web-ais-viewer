@@ -8,13 +8,6 @@ import VesselLayer from "./modules/map/vessel_layer.mjs";
 import VesselSource from "./modules/map/vessel_source.mjs";
 import VesselDetailsOverlay from "./modules/map/vessel_details_overlay.mjs";
 
-
-// Don't show vessels that haven't updated in 15 minutes.
-function shouldShowVessel(vessel) {
-    const now = new Date();
-    return (now - vessel.lastUpdate) < 1000*60*15;
-}
-
 function getVesselData(mmsi) {
     const data = localStorage[mmsi];
     if (!data) return null;
@@ -30,8 +23,6 @@ const vesselSource = new VesselSource();
 for (let i = 0; i < localStorage.length; ++i) {
     const vessel = getVesselData(localStorage.key(i));
     if (!vessel) continue;
-    if (!shouldShowVessel(vessel))
-        continue;
     vesselSource.addOrUpdateVessel(vessel);
 }
 self.addEventListener('storage', e => {
@@ -77,17 +68,3 @@ map.on('click', e => {
     if (!gotFeature)
         vessel_details_overlay.setFeature(undefined);
 });
-
-
-// Every 30 seconds, remove features that haven't been updated recently.
-self.setInterval(() => {
-    const now = new Date();
-    for (const feature of vesselSource.getFeatures()) {
-        const vessel = feature.get('data');
-        if (!shouldShowVessel(vessel)) {
-            if (vessel_details_overlay.get('feature') == feature)
-                vessel_details_overlay.setFeature(undefined);
-            vesselSource.removeFeature(feature);
-        }
-    }
-}, 1000*30);
