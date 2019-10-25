@@ -7,6 +7,8 @@ import TileArcGISRest from 'ol/source/TileArcGISRest.js';
 
 import VesselLayer from "./modules/map/vessel_layer.mjs";
 import VesselSource from "./modules/map/vessel_source.mjs";
+import VesselTrackLayer from "./modules/map/vessel_track_layer.mjs";
+import VesselTrackSource from "./modules/map/vessel_track_source.mjs";
 import VesselDetailsOverlay from "./modules/map/vessel_details_overlay.mjs";
 
 import SerialSettingsControl from "./modules/serial_settings.mjs";
@@ -14,7 +16,6 @@ import SerialSettingsControl from "./modules/serial_settings.mjs";
 import { LineSplitterStream } from './modules/streams.mjs';
 import { NMEAParseStream, NMEAFilterStream } from './modules/nmea.mjs';
 import { kAISMessageTypes, AISPayloadDecoderStream, AISParseStream } from './modules/ais.mjs';
-
 
 const vesselData = {};
 function getVesselData(mmsi) {
@@ -28,17 +29,21 @@ function getVesselData(mmsi) {
 }
 
 const vessel_source = new VesselSource();
+const vessel_track_source = new VesselTrackSource();
 
 for (let i = 0; i < localStorage.length; ++i) {
     const vessel = getVesselData(localStorage.key(i));
     if (!vessel) continue;
     vesselData[vessel.mmsi] = vessel;
     vessel_source.addOrUpdateVessel(vessel);
+    vessel_track_source.addOrUpdateVessel(vessel);
 }
 
 const vessel_layer = new VesselLayer({source: vessel_source});
 
 const vessel_details_overlay = new VesselDetailsOverlay();
+
+const vessel_track_layer = new VesselTrackLayer({source: vessel_track_source});
 
 const map = new Map({
     target: 'map',
@@ -47,7 +52,8 @@ const map = new Map({
             //source: new OSM()
             source: new TileArcGISRest({url: "https://seamlessrnc.nauticalcharts.noaa.gov/arcgis/rest/services/RNC/NOAA_RNC/ImageServer"})
         }),
-        vessel_layer
+        vessel_track_layer,
+        vessel_layer,
     ],
     overlays: [
         vessel_details_overlay
@@ -68,7 +74,8 @@ map.on('click', e => {
         gotFeature = true;
 
         vessel_details_overlay.setFeature(feature);
-    }, {layerFilter: layer => layer == vessel_layer, hitTolerance: 16});
+        vessel_track_layer.set_vessel(feature.get('data').mmsi);
+    }, {layerFilter: layer => layer == vessel_layer, hitTolerance: 32});
 
     if (!gotFeature)
         vessel_details_overlay.setFeature(undefined);
@@ -102,6 +109,7 @@ map.addControl(new SerialSettingsControl((port) => {
                     vesselData[value.mmsi] = vessel;
                     localStorage[value.mmsi] = JSON.stringify(vessel);
                     vessel_source.addOrUpdateVessel(vessel);
+                    vessel_track_source.addOrUpdateVessel(vessel);
                 }
             }
         }));

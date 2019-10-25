@@ -16,6 +16,7 @@ export default class SerialSettingsControl extends Control {
         btn.addEventListener('click', async () => {
             this.port = await navigator.serial.requestPort();
             await this.port.open({ baudrate: 38400 });
+            btn.innerHTML = "Receiving data";
             port_handler(this.port);
         });
     }
