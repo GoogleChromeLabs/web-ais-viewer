@@ -8,6 +8,8 @@ import VesselLayer from "./modules/map/vessel_layer.mjs";
 import VesselSource from "./modules/map/vessel_source.mjs";
 import VesselDetailsOverlay from "./modules/map/vessel_details_overlay.mjs";
 
+import SerialSettingsControl from "./modules/serial_settings.mjs";
+
 function getVesselData(mmsi) {
     const data = localStorage[mmsi];
     if (!data) return null;
@@ -68,3 +70,5 @@ map.on('click', e => {
     if (!gotFeature)
         vessel_details_overlay.setFeature(undefined);
 });
+
+map.addControl(new SerialSettingsControl());

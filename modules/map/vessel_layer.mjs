@@ -1,12 +1,9 @@
 import VectorLayer from 'ol/layer/Vector.js';
-import Circle from 'ol/style/Circle.js';
-import Fill from 'ol/style/Fill.js';
-import Icon from 'ol/style/Icon.js';
-import Stroke from 'ol/style/Stroke.js';
-import Style from 'ol/style/Style.js';
+import {Circle, Fill, Icon, Stroke, Style} from 'ol/style.js';
 
 function shouldShowVessel(vessel) {
     const now = new Date();
+    return true;
     return (now - vessel.lastUpdate) < 1000*60*30;
 }
 
@@ -34,7 +31,8 @@ function getVesselStyle(feature, resolution) {
         heading = vessel.course;
     }
     if (heading == null)
-        return vesselStyle;
+        return defaultVesselStyle;
+
     heading = heading / 180 * Math.PI;
     let color = '#000000';
     if (vessel.shiptype >= 50 && vessel.shiptype < 60)
@@ -51,7 +49,7 @@ function getVesselStyle(feature, resolution) {
         if (length > 200)
             scale = 0.45;
     }
-    let opacity = 1;
+    let opacity = 0.9;
     const now = new Date();
     if (now - vessel.lastUpdate > 1000*60*5)
         opacity = 0.5;
@@ -61,7 +59,7 @@ function getVesselStyle(feature, resolution) {
         opacity = 0.1;
     return new Style({
         image: new Icon({
-            src: "vessel.png",
+            src: "vessel2.png",
             scale: scale,
             rotation: heading,
             color: color,

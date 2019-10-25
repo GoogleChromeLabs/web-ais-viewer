@@ -3,7 +3,7 @@ import {getCenter} from 'ol/extent.js';
 import {formatVesselData} from '../formatter.mjs';
 
 export default class VesselDetailsOverlay extends Overlay {
-    #featurePropertyChanged = (e => {
+    #featurePropertyChanged = e => {
         const feature = e.target;
         if (e.key == 'geometry') {
             const geometry = feature.getGeometry();
@@ -12,7 +12,7 @@ export default class VesselDetailsOverlay extends Overlay {
             const data = feature.get('data');
             this.getElement().innerHTML = formatVesselData(data);
         }
-    }).bind(this);
+    }
 
     constructor() {
         const element = document.createElement('div');
