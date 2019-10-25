@@ -3,7 +3,6 @@ import {Circle, Fill, Icon, Stroke, Style} from 'ol/style.js';
 
 function shouldShowVessel(vessel) {
     const now = new Date();
-    return true;
     return (now - vessel.lastUpdate) < 1000*60*30;
 }
 
@@ -49,7 +48,7 @@ function getVesselStyle(feature, resolution) {
         if (length > 200)
             scale = 0.45;
     }
-    let opacity = 0.9;
+    let opacity = 0.8;
     const now = new Date();
     if (now - vessel.lastUpdate > 1000*60*5)
         opacity = 0.5;

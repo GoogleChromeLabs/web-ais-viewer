@@ -11,6 +11,12 @@ import VesselDetailsOverlay from "./modules/map/vessel_details_overlay.mjs";
 
 import SerialSettingsControl from "./modules/serial_settings.mjs";
 
+import { LineSplitterStream } from './modules/streams.mjs';
+import { NMEAParseStream, NMEAFilterStream } from './modules/nmea.mjs';
+import { kAISMessageTypes, AISPayloadDecoderStream, AISParseStream } from './modules/ais.mjs';
+
+
+const vesselData = {};
 function getVesselData(mmsi) {
     const data = localStorage[mmsi];
     if (!data) return null;
@@ -26,14 +32,9 @@ const vessel_source = new VesselSource();
 for (let i = 0; i < localStorage.length; ++i) {
     const vessel = getVesselData(localStorage.key(i));
     if (!vessel) continue;
+    vesselData[vessel.mmsi] = vessel;
     vessel_source.addOrUpdateVessel(vessel);
 }
-self.addEventListener('storage', e => {
-    if (e.storageArea != localStorage) return;
-    const vessel = getVesselData(e.key);
-    if (!vessel) return;
-    vessel_source.addOrUpdateVessel(vessel);
-});
 
 const vessel_layer = new VesselLayer({source: vessel_source});
 
@@ -73,4 +74,36 @@ map.on('click', e => {
         vessel_details_overlay.setFeature(undefined);
 });
 
-map.addControl(new SerialSettingsControl());
+map.addControl(new SerialSettingsControl((port) => {
+    let [forYou, forLog] = port.readable.tee();
+    forLog.pipeTo(new WritableStream({
+        write: function (chunk) {
+            console.log(chunk);
+        }
+    }));
+    self.pipe = forYou.
+        pipeThrough(new TextDecoderStream('ascii')).
+        pipeThrough(new LineSplitterStream()).
+        pipeThrough(new NMEAParseStream()).
+        pipeThrough(new NMEAFilterStream(kAISMessageTypes)).
+        pipeThrough(new AISPayloadDecoderStream()).
+        pipeThrough(new AISParseStream());
+    self.piperesult = self.pipe.pipeTo(new WritableStream({
+            write: function (value) {
+                console.log(value);
+                if('mmsi' in value) {
+                    let vessel = vesselData[value.mmsi];
+                    vessel = { ...vessel, ...value, lastUpdate: new Date()};
+                    if ('lat' in value && 'lon' in value) {
+                        if (!('track' in vessel))
+                            vessel.track = [];
+                        vessel.track.push({lat: value.lat, lon: value.lon, ts: vessel.lastUpdate});
+                    }
+                    vesselData[value.mmsi] = vessel;
+                    localStorage[value.mmsi] = JSON.stringify(vessel);
+                    vessel_source.addOrUpdateVessel(vessel);
+                }
+            }
+        }));
+    self.piperesult.then(() => "Done reading", () => "Failed reading");
+}));
