@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-import { LineSplitterStream } from './modules/streams.mjs';
-import { NMEAParseStream, NMEAFilterStream } from './modules/nmea.mjs';
-import { kAISMessageTypes, AISPayloadDecoderStream, AISParseStream } from './modules/ais.mjs';
-import { formatVesselData } from './modules/formatter.mjs';
+import { LineSplitterStream } from './modules/streams.js';
+import { NMEAParseStream, NMEAFilterStream } from './modules/nmea.js';
+import { kAISMessageTypes, AISPayloadDecoderStream, AISParseStream } from './modules/ais.js';
+import { formatVesselData } from './modules/formatter.js';
 
 function getContainer(mmsi) {
     const id = 'mmsi_' + mmsi;

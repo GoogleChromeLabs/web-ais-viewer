@@ -16,7 +16,7 @@
 
 import Overlay from 'ol/Overlay.js';
 import {getCenter} from 'ol/extent.js';
-import {formatVesselData} from '../formatter.mjs';
+import {formatVesselData} from '../formatter.js';
 
 export default class VesselDetailsOverlay extends Overlay {
     #featurePropertyChanged = e => {

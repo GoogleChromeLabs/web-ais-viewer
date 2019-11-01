@@ -21,17 +21,17 @@ import TileLayer from 'ol/layer/Tile.js';
 import {fromLonLat} from 'ol/proj.js';
 import TileArcGISRest from 'ol/source/TileArcGISRest.js';
 
-import VesselLayer from "./modules/map/vessel_layer.mjs";
-import VesselSource from "./modules/map/vessel_source.mjs";
-import VesselTrackLayer from "./modules/map/vessel_track_layer.mjs";
-import VesselTrackSource from "./modules/map/vessel_track_source.mjs";
-import VesselDetailsOverlay from "./modules/map/vessel_details_overlay.mjs";
+import VesselLayer from "./modules/map/vessel_layer.js";
+import VesselSource from "./modules/map/vessel_source.js";
+import VesselTrackLayer from "./modules/map/vessel_track_layer.js";
+import VesselTrackSource from "./modules/map/vessel_track_source.js";
+import VesselDetailsOverlay from "./modules/map/vessel_details_overlay.js";
 
-import SerialSettingsControl from "./modules/serial_settings.mjs";
+import SerialSettingsControl from "./modules/serial_settings.js";
 
-import { LineSplitterStream } from './modules/streams.mjs';
-import { NMEAParseStream, NMEAFilterStream } from './modules/nmea.mjs';
-import { kAISMessageTypes, AISPayloadDecoderStream, AISParseStream } from './modules/ais.mjs';
+import { LineSplitterStream } from './modules/streams.js';
+import { NMEAParseStream, NMEAFilterStream } from './modules/nmea.js';
+import { kAISMessageTypes, AISPayloadDecoderStream, AISParseStream } from './modules/ais.js';
 
 const vesselData = {};
 function getVesselData(mmsi) {
