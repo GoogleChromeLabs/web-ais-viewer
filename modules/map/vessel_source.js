@@ -33,7 +33,10 @@ export default class VesselSource extends VectorSource {
             feature.setId(vessel.mmsi);
             this.addFeature(feature);
         }
-        feature.setGeometry(new Point(fromLonLat([vessel.lon, vessel.lat])));
+        let coord = fromLonLat([vessel.lon, vessel.lat]);
+        if (!isFinite(coord[0]) || !isFinite(coord[1]))
+            return;
+        feature.setGeometry(new Point(coord));
         feature.set('data', vessel);
     }
 };
